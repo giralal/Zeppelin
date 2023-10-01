@@ -11,6 +11,7 @@ import {
   RESTEvents,
   TextChannel,
   ThreadChannel,
+  ActivityType,
 } from "discord.js";
 import { EventEmitter } from "events";
 import { Knub, PluginError, PluginLoadError, PluginNotLoadedError } from "knub";
@@ -365,6 +366,9 @@ connect().then(async (connection) => {
 
   client.once("ready", () => {
     startUptimeCounter();
+    client.user?.setPresence({
+  activities: [{ name: "some funky tunes", type: ActivityType.Listening }],
+});
   });
 
   client.rest.on(RESTEvents.RateLimited, (data) => {
