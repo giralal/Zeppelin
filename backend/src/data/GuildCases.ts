@@ -77,7 +77,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+       
         user_id: userId,
       },
     });
