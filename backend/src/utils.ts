@@ -557,7 +557,7 @@ export function successMessage(str: string, emoji = "<:green_check:1158062469181
   return emoji ? `${emoji} ${str}` : str;
 }
 
-export function errorMessage(str, emoji = "<:red_x:1158062398842875934>") {
+export function errorMessage(str: srting, emoji = "<:red_x:1158062398842875934>") {
   return emoji ? `${emoji} ${str}` : str;
 }
 
