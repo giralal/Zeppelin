@@ -24,7 +24,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+        
         id: In(ids),
       },
     });
@@ -34,7 +34,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+       
         id,
       },
     });
@@ -44,7 +44,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+       
         case_number: caseNumber,
       },
     });
@@ -54,7 +54,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+       
         mod_id: modId,
       },
       order: {
@@ -67,7 +67,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+      
         audit_log_id: auditLogId,
       },
     });
@@ -86,7 +86,7 @@ export class GuildCases extends BaseGuildRepository {
   async getTotalCasesByModId(modId: string): Promise<number> {
     return this.cases.count({
       where: {
-        //guild_id: this.guildId,
+       
         mod_id: modId,
         is_hidden: false,
       },
@@ -97,7 +97,7 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-        //guild_id: this.guildId,
+       
         mod_id: modId,
         is_hidden: false,
       },
@@ -151,7 +151,7 @@ export class GuildCases extends BaseGuildRepository {
         .insert({
           case_number: lastCaseNumber + 1,
           ...data,
-          //guild_id: this.guildId,
+         
         })
         .catch((err) => {
           if (err?.code === "ER_DUP_ENTRY") {
@@ -245,7 +245,7 @@ export class GuildCases extends BaseGuildRepository {
   getExportCases(skip: number, take: number): Promise<Case[]> {
     return this.cases.find({
       where: {
-        //guild_id: this.guildId,
+      
       },
       relations: ["notes"],
       order: {
