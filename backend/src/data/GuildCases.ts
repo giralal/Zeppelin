@@ -1,60 +1,54 @@
-import { In, InsertResult, Repository } from "typeorm";
-import { Queue } from "../Queue";
-import { chunkArray } from "../utils";
+import { getRepository, In, InsertResult, Repository } from "typeorm";
 import { BaseGuildRepository } from "./BaseGuildRepository";
 import { CaseTypes } from "./CaseTypes";
-import { dataSource } from "./dataSource";
+import { connection } from "./db";
 import { Case } from "./entities/Case";
 import { CaseNote } from "./entities/CaseNote";
+import moment = require("moment-timezone");
+
+const CASE_SUMMARY_REASON_MAX_LENGTH = 300;
 
 export class GuildCases extends BaseGuildRepository {
   private cases: Repository<Case>;
   private caseNotes: Repository<CaseNote>;
 
-  protected createQueue: Queue;
-
   constructor(guildId) {
     super(guildId);
-    this.cases = dataSource.getRepository(Case);
-    this.caseNotes = dataSource.getRepository(CaseNote);
-    this.createQueue = new Queue();
+    this.cases = getRepository(Case);
+    this.caseNotes = getRepository(CaseNote);
   }
 
   async get(ids: number[]): Promise<Case[]> {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-        
         id: In(ids),
       },
     });
   }
 
-  async find(id: number): Promise<Case | null> {
+  async find(id: number): Promise<Case | undefined> {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-       
         id,
       },
     });
   }
 
-  async findByCaseNumber(caseNumber: number): Promise<Case | null> {
+  async findByCaseNumber(caseNumber: number): Promise<Case | undefined> {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-       
         case_number: caseNumber,
       },
     });
   }
 
-  async findLatestByModId(modId: string): Promise<Case | null> {
+  async findLatestByModId(modId: string): Promise<Case | undefined> {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-       
         mod_id: modId,
       },
       order: {
@@ -63,11 +57,10 @@ export class GuildCases extends BaseGuildRepository {
     });
   }
 
-  async findByAuditLogId(auditLogId: string): Promise<Case | null> {
+  async findByAuditLogId(auditLogId: string): Promise<Case | undefined> {
     return this.cases.findOne({
       relations: this.getRelations(),
       where: {
-      
         audit_log_id: auditLogId,
       },
     });
@@ -77,7 +70,6 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-       
         user_id: userId,
       },
     });
@@ -86,9 +78,8 @@ export class GuildCases extends BaseGuildRepository {
   async getTotalCasesByModId(modId: string): Promise<number> {
     return this.cases.count({
       where: {
-       
         mod_id: modId,
-        is_hidden: false,
+        is_hidden: 0,
       },
     });
   }
@@ -97,9 +88,8 @@ export class GuildCases extends BaseGuildRepository {
     return this.cases.find({
       relations: this.getRelations(),
       where: {
-       
         mod_id: modId,
-        is_hidden: false,
+        is_hidden: 0,
       },
       skip,
       take: count,
@@ -107,26 +97,6 @@ export class GuildCases extends BaseGuildRepository {
         case_number: "DESC",
       },
     });
-  }
-
-  async getMinCaseNumber(): Promise<number> {
-    const result = await this.cases
-      .createQueryBuilder()
-      .where("guild_id = :guildId", { guildId: this.guildId })
-      .select(["MIN(case_number) AS min_case_number"])
-      .getRawOne<{ min_case_number: number }>();
-
-    return result?.min_case_number || 0;
-  }
-
-  async getMaxCaseNumber(): Promise<number> {
-    const result = await this.cases
-      .createQueryBuilder()
-      .where("guild_id = :guildId", { guildId: this.guildId })
-      .select(["MAX(case_number) AS max_case_number"])
-      .getRawOne<{ max_case_number: number }>();
-
-    return result?.max_case_number || 0;
   }
 
   async setHidden(id: number, hidden: boolean): Promise<void> {
@@ -139,36 +109,25 @@ export class GuildCases extends BaseGuildRepository {
   }
 
   async createInternal(data): Promise<InsertResult> {
-    return this.createQueue.add(async () => {
-      const lastCaseNumberRow = await this.cases
-        .createQueryBuilder()
-        .select(["MAX(case_number) AS last_case_number"])
-        .where("guild_id = :guildId", { guildId: this.guildId })
-        .getRawOne();
-      const lastCaseNumber = lastCaseNumberRow?.last_case_number || 0;
-
-      return this.cases
-        .insert({
-          case_number: lastCaseNumber + 1,
-          ...data,
-         
-        })
-        .catch((err) => {
-          if (err?.code === "ER_DUP_ENTRY") {
-            if (data.audit_log_id) {
-              // FIXME: Debug
-              // tslint:disable-next-line:no-console
-              console.trace(`Tried to insert case with duplicate audit_log_id`);
-              return this.createInternal({
-                ...data,
-                audit_log_id: undefined,
-              });
-            }
+    return this.cases
+      .insert({
+        ...data,
+        guild_id: this.guildId,
+        case_number: () => `(SELECT IFNULL(MAX(case_number)+1, 1) FROM cases AS ma2 WHERE guild_id = ${this.guildId})`,
+      })
+      .catch((err) => {
+        if (err?.code === "ER_DUP_ENTRY") {
+          if (data.audit_log_id) {
+            console.trace(`Tried to insert case with duplicate audit_log_id`);
+            return this.createInternal({
+              ...data,
+              audit_log_id: undefined,
+            });
           }
+        }
 
-          throw err;
-        });
-    });
+        throw err;
+      });
   }
 
   async create(data): Promise<Case> {
@@ -181,7 +140,7 @@ export class GuildCases extends BaseGuildRepository {
   }
 
   async softDelete(id: number, deletedById: string, deletedByName: string, deletedByText: string) {
-    return dataSource.transaction(async (entityManager) => {
+    return connection.transaction(async (entityManager) => {
       const cases = entityManager.getRepository(Case);
       const caseNotes = entityManager.getRepository(CaseNote);
 
@@ -215,44 +174,6 @@ export class GuildCases extends BaseGuildRepository {
     await this.caseNotes.insert({
       ...data,
       case_id: caseId,
-    });
-  }
-
-  async deleteAllCases(): Promise<void> {
-    const idRows = await this.cases
-      .createQueryBuilder()
-      .where("guild_id = :guildId", { guildId: this.guildId })
-      .select(["id"])
-      .getRawMany<{ id: number }>();
-    const ids = idRows.map((r) => r.id);
-    const batches = chunkArray(ids, 500);
-    for (const batch of batches) {
-      await this.cases.createQueryBuilder().where("id IN (:ids)", { ids: batch }).delete().execute();
-    }
-  }
-
-  async bumpCaseNumbers(amount: number): Promise<void> {
-    await this.cases
-      .createQueryBuilder()
-      .where("guild_id = :guildId", { guildId: this.guildId })
-      .update()
-      .set({
-        case_number: () => `case_number + ${parseInt(amount as unknown as string, 10)}`,
-      })
-      .execute();
-  }
-
-  getExportCases(skip: number, take: number): Promise<Case[]> {
-    return this.cases.find({
-      where: {
-      
-      },
-      relations: ["notes"],
-      order: {
-        case_number: "ASC",
-      },
-      skip,
-      take,
     });
   }
 }
